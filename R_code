@@ -1,0 +1,314 @@
+############## Stack Overflow Tags Network Visualization ############
+rm(list=ls())
+library(igraph)
+library(plyr)
+library(ggplot2)
+
+#Read in data
+nodes <-read.csv(' /stack_network_nodes.csv')
+links <-read.csv(' /stack_network_links.csv')
+
+tags1 <- graph.data.frame(links, directed=FALSE, vertices=nodes)
+
+# TAGS EXPLORATION (ORIGINAL NETWORK) 
+#Number of edges
+E(tags1) 
+#490 edges
+#Number of vertices
+V(tags1) 
+#115 vertices
+
+#Connectivity of Unsimplified graph
+is.weighted(tags1) #False
+is.simple(tags1) #False
+is.connected(tags1) #False
+is.connected(tags1, mode = "strong") # False
+is.connected(tags1, mode = "weak") # False
+
+#Plot Unsimplified network
+
+plot(tags1 ,layout =layout_with_fr,vertex.size=8,edge.arrow.size=0.3,
+     vertex.label.cex=0,vertex.label.dist=0.7, vertex.label =NA, edge.color = "black")
+
+plot(tags1,shape="sphere", vertex.label=tags1$name, edge.arrow.size=0.05,
+     vertex.color=nodes$group, vertex.size=tags1$nodesize,
+     edge.size = tags1$value, edge.color = "blue")
+
+#Summary Statistics
+V(tags)$size <- degree(tags, v = V(tags), mode = c("out"), loops=TRUE, normalized=FALSE)
+V(tags)$color <- nodes$group
+plot(tags, vertex.label=tags$names)
+V(tags1)$degree <- degree(tags1)
+E(tags1)$degree <- degree(tags1)
+summary(E(tags1)$degree)
+### Min.    1st Qu.  Median   Mean   3rd Qu.  Max. 
+### 2.000   4.000    6.000    8.873  12.000   32.000 
+
+
+######### SIMPLIFY NETWORK 
+#Simplify
+tags <- simplify(tags1, edge.attr.comb="sum")
+is.simple(tags) #True
+
+# TAGS EXPLORATION (SIMPLIFIED NETWORK) -----------------------------------
+#New number of edges
+E(tags) 
+#245 edges
+#New number of vertices
+V(tags) 
+#115 vertices
+
+#Connectivity of Simplified Network
+is.connected(tags) 
+is.connected(tags, mode = "strong") 
+is.connected(tags, mode = "weak") 
+
+#Plot simplified network with different parameter variations
+plot(tags ,layout =layout_with_fr,vertex.color="pink",vertex.size=8,edge.arrow.size=0.3,
+     vertex.label.cex=0,vertex.label.dist=0.7, vertex.label =NA, edge.color = "black")
+
+plot(tags,  layout =layout_with_fr,edge.arrow.size=0.5, edge.curved=0,
+     vertex.color=V(tags)$group, vertex.size=10,vertex.label=V(tags)$value, vertex.label.color="black",
+     vertex.label.cex=0.75,edge.color="black")
+
+V(tags)$degree <- degree(tags)
+E(tags)$degree <- degree(tags)
+summary(E(tags)$degree)
+
+#Making node size proportional to degree centrality 
+V(tags)$size <- degree(tags, v = V(tags), mode = c("out"), loops=TRUE, normalized=FALSE)
+V(tags)$color <- nodes$group
+plot(tags, vertex.label=tags$names)
+
+# NETWORK ATTRIBUTES ------------------------------------------------------
+#Reciprocity
+reciprocity(tags) #1
+
+#Edge Density
+edge_density(tags) #0.03737605
+
+#Average Path Length
+average.path.length(tags, directed=FALSE) #4.500097
+
+#Diameter
+diameter(tags)#10
+
+#Global Clustering
+transitivity(tags, type="global") #0.4870924
+
+#Local Clustering
+transitivity(tags, type="localaverage") #0.6154432
+
+trans_nodes <- head(arrange(nodes,desc(nodesize)), n = 10)
+trans <- transitivity(tags, type = "local", weights = E(tags)$value, vids = c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10))
+global_cc <- transitivity(tags, type = "global", weights = E(tags)$value, vids = c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10))
+nodes_w_trans <- data.frame(trans_nodes, trans)
+nodes_w_trans
+
+## Top 10
+ggplot(data=nodes_w_trans, aes(x=reorder(name, trans), y=trans, fill = as.factor(group))) +
+  geom_bar(stat="identity") +
+  scale_fill_brewer(palette = "Set2") + 
+  ggtitle("") +
+  xlab("") + ylab("Local Transitivity") + 
+  labs(fill = "Group") +
+  coord_flip()
+
+#Cliques
+clique.number(tags) #7
+#Clique structure
+table(sapply(maximal.cliques(tags), length))
+#2 - 40, #3 - 21, #4 - 14, #5 - 8, #6 - 3, #7 - 3
+
+#Degree Centrality
+mean(degree(tags)) #4.26087
+
+degree_cen <- degree(tags)
+degree_cen1<- data.frame(nodes, degree_cen)
+
+##Top 10
+deg_top10 <- head(arrange(degree_cen1,desc(degree_cen)), n = 10)
+degree_cen1$group <- as.factor(degree_cen1$group)
+dcg <- ggplot(data=deg_top10, aes(x=reorder(name, degree_cen), y=degree_cen, fill = as.factor(group))) +
+  geom_bar(stat="identity") +
+  scale_fill_brewer(palette = "Set2") + 
+  ggtitle("") +
+  xlab("") + ylab("Degree_Centrality") + 
+  labs(fill = "Group") +
+  coord_flip()
+dcg
+head(sort(degree_cen, decreasing=TRUE))
+
+#Closeness
+closeness <- closeness(tags, mode="all", weights=E(tags)$value, normalized=TRUE)
+mean(closeness)#0.004853719
+
+##Top 10
+with_close <- data.frame(nodes, closeness)
+close_top10 <- head(arrange(with_close,desc(closeness)), n = 10)
+with_close$group <- as.factor(with_close$group)
+ccg <- ggplot(data=close_top10, aes(x=reorder(name, -closeness), y=closeness, fill = as.factor(group))) +
+  geom_bar(stat="identity") +
+  scale_fill_brewer(palette = "Set2") + 
+  ggtitle("") +
+  xlab("") + ylab("Closeness") + 
+  labs(fill = "Group") +
+  coord_flip()
+ccg
+head(sort(closeness, decreasing=TRUE))
+
+##Node Betweenness
+node_betweenness <- betweenness(tags, directed=FALSE, weights=E(tags)$value, nobigint=TRUE, normalized=TRUE) 
+mean(node_betweenness)#0.02536468
+
+##Top 10 
+with_betw <- data.frame(nodes, node_betweenness)
+betw_top10 <- head(arrange(with_betw,desc(node_betweenness)), n = 10)
+with_betw$group <- as.factor(with_betw$group)
+bwg <- ggplot(data=betw_top10, aes(x=reorder(name, node_betweenness), y=node_betweenness, fill = as.factor(group))) +
+  geom_bar(stat="identity") +
+  scale_fill_brewer(palette = "Set2") + 
+  ggtitle("") +
+  xlab("") + ylab("Betweenness") + 
+  labs(fill = "Group") +
+  coord_flip()
+bwg
+head(sort(node_betweenness, decreasing=TRUE))
+
+
+#Edge Betweenness
+mean(edge.betweenness(tags, e=E(tags), directed=FALSE)) #94.83265
+
+#Embeddedness
+embedd <- round(constraint(tags, nodes=V(tags)), digits=4)
+mean(embedd)#0.5993231
+head(sort(embedd, decreasing=TRUE))
+
+########
+#Authority Score
+auth_score <-authority.score(tags, scale=FALSE)
+auth_score1 <-  authority.score(tags, weights=E(tags)$weight)$vector
+aus <- sort(auth_score1, decreasing=TRUE)
+head(aus)
+
+#Hub Score
+hub_score<-hub.score(tags, scale=FALSE)
+hub_score1 <- hub.score(auth_score1, weights=E(tags)$weight)$vector
+hs <- sort(hub_score1 , decreasing=TRUE)
+head(hs)
+
+
+# COMMUNITY DETECTION ALGORITHMS -----------------------------------------------------
+#Not using Spinglass since network is not connected
+
+#Walktrap
+walkTrap <- walktrap.community(as.undirected(tags), weights=E(tags)$weight)
+plot(walkTrap, as.undirected(tags), main="Walktrap method", 
+     vertex.shapes='sphere', edge.arrow.size=0.05, vertex.size=7,
+     vertex.label=V(tags)$group)
+#Number of communities
+length(walkTrap) #19
+modularity(walkTrap) #0.6984339
+
+#Label Propagation
+labelProp <- label.propagation.community(as.undirected(tags),weights=E(tags)$weight )
+plot(labelProp, as.undirected(tags), vertex.label=NA, vertex.size = 7,
+     main="Label Propagation method", vertex.shapes='sphere', edge.arrow.size=0.05)
+
+###group 6
+tags_group6<-V(tags)[V(tags)$group=="6"]
+subgraph_group6<-induced_subgraph(tags, tags_group6)
+group6_graph <- walktrap.community(subgraph_group6, weights=E(subgraph_group6)$weight)
+plot(group6_graph ,subgraph_group6, vertex.size=10,vertex.size = log(V(tags)$nodesize),
+     vertex.label.cex=1.25, vertex.label.color="black")
+V(subgraph_group6)
+
+betweenness(tags_group6)
+
+#Number of communities
+length(labelProp) #14
+modularity(labelProp) #0.7185423
+
+# LAYOUT ALGORITHMS --------------------------------------------------------
+#Not using Kamada Kawai since network is not connected
+
+#Fruchterman-Reingold
+fr <- layout.fruchterman.reingold(as.undirected(tags), weights=E(tags)$weight)
+plot(tags, layout = fr, edge.width = 0.75*log(E(tags)$value),
+     vertex.label = V(tags)$name, vetex.lable.size = 10,vertex.label.color = "black", 
+     vertex.size = log(V(tags)$nodesize), vertex.color = V(tags)$group, 
+     vertex.label.dist=0.5,ylim=c(-1,1),xlim=c(-1,1), asp = -1, rescale = TRUE, 
+     main = "Fruchterman Reingold")
+
+# with group numbers
+plot(tags, layout = fr, edge.width = 0.75*log(E(tags)$value),
+     vertex.label = V(tags)$group, vetex.lable.size = 10, 
+     vertex.size = log(V(tags)$nodesize), vertex.color = V(tags)$group,
+     vertex.label.dist=0.3, 
+     ylim=c(-1,1),xlim=c(-1,1), asp = -1, rescale = TRUE, 
+     main = "Fruchterman Reingold")
+
+## Layout Nicely
+plot(tags, layout = layout_nicely, weights=E(tags)$weight, edge.width = 0.75*log(E(tags)$value),
+     vertex.label = V(tags)$name, vetex.lable.size = 10,vertex.label.color = "black", 
+     vertex.size = log(V(tags)$nodesize), vertex.color = V(tags)$group, 
+     vertex.label.dist=0,ylim=c(-1,1),xlim=c(-1,1), asp = -1, rescale = TRUE, 
+     main = "Layout Nicely")
+
+##Reingold-Tilford
+rt <- layout.reingold.tilford(tags)
+
+plot(tags, layout =rt, edge.width = 0.75*log(E(tags)$value),
+vertex.label = V(tags)$name, vetex.lable.size = 10,vertex.label.color = "blue", 
+vertex.size = log(V(tags)$nodesize), vertex.color = V(tags)$group, 
+vertex.label.dist=0,ylim=c(-1,1),xlim=c(-1,1), asp = -1, rescale = TRUE, 
+main = "Fruchterman Reingold")
+
+plot(tags, layout = layout.reingold.tilford(tags), edge.width = 0.75*log(E(tags)$value), 
+     vertex.label = V(tags)$name,vertex.size = log(V(tags)$nodesize), vertex.color = V(tags)$group,
+     ylim=c(-1,1),xlim=c(-1,1), asp = -1, rescale = TRUE, main = "Reingold Tilford")
+
+
+# DISTRIBUTION FUNCTION ---------------------------------------------------
+library(plyr)
+
+frequencies <- count(links, 'source')
+degrees <- count(frequencies, 'freq')
+
+colnames(degrees)[1] <- 'degree'
+colnames(degrees)[2] <- 'frequency'
+
+degrees$cumsum <- cumsum(degrees$frequency)
+F_d <- ecdf(degrees$frequency)
+F_d_forplot <- ecdf(degrees$cumsum)
+
+par(mfrow=c(1,3))
+plot(F_d_forplot, xlab = 'Number of Nodes', main = 'Degree Distribution')
+
+# -------------------------------------------------------------------------
+#Log-log Degree distribution
+d.net <- degree(tags)
+dd.net <- degree.distribution(tags)
+d <- 1:max(d.net)-1
+ind <- (dd.net != 0)
+
+plot(d[ind], dd.net[ind], log="xy", col="darkgreen",
+     xlab=c("Log-Degree"), ylab=c("Log-Intensity"),
+     main="Log-Log Degree Distribution", pch = 19)
+
+
+#Average neighbor degree versus vertex degree
+a.nn.deg <- graph.knn(tags, V(tags))$knn
+plot(d.net, a.nn.deg, log="xy", 
+     col="red", xlab=c("Log Vertex Degree"),
+     ylab=c("Log Average Neighbor Degree"), main="Log-Log Degree Distribution",pch = 19)
+
+
+
+
+
+
+
+
+
+
